@@ -37,14 +37,15 @@ class CompoundEditForm(FlaskForm):
     class_results = TextAreaField('Class Results')
     superclass_results = TextAreaField('Superclass Results')
     pathway_results = TextAreaField('Pathway Results')
-    isglycoside = StringField('Is Glycoside')
+    isglycoside = SelectField('Is Glycoside', choices=[('true', 'Yes'), ('false', 'No')])
     pubchem_id = StringField('PubChem ID')
     inchi_key = StringField('InChI Key')
     inchi = StringField('InChI')
     article_url = StringField('Article URL')
-    status = StringField('Status')
+    status = SelectField('Status', choices=[('true', 'Public'), ('false', 'Private')])
 
     dois = FieldList(FormField(DOIForm), min_entries=1)
     taxa = FieldList(FormField(TaxaForm), min_entries=1)
 
     submit = SubmitField('Update')
+        

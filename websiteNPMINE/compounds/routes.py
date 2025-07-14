@@ -485,6 +485,33 @@ def edit_compound(id):
 
     return render_template('editCompound.html', form=form, compound=compound, related_taxa=related_taxa, logged_in=logged_in)
 
+@compounds.route('/compound/<int:id>/delete', methods=['POST'])
+@login_required
+def delete_compound(id):
+    compound = Compounds.query.get_or_404(id)
+
+    try:
+        for doi in compound.dois:
+            DOI.soft_delete(doi)
+
+        Compounds.soft_delete(compound)
+        flash('Compound deleted successfully!', 'success')
+        return redirect(url_for('main.index'))
+    except Exception as e:
+        db.session.rollback()
+        flash(f"An error occurred while deleting the compound: {e}", "danger")
+        return redirect(url_for('compounds.edit_compound', id=id))
+
+@compounds.route('/compound/<int:id>/restore', methods=['POST'])
+@login_required
+def restore_compound(id):
+    try:
+        compound = Compounds.query.get_or_404(id)
+        compound.restore
+        return jsonify({"message": "Compound restored successfully"}), 200
+    except Exception as e: 
+        return jsonify({"message": "An error occurred while restoring the compound"}), 500
+
 @compounds.route('/download_compounds', methods=['GET'])
 def download_compounds():
     logged_in = current_user.is_authenticated
