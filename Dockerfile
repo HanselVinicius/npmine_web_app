@@ -4,23 +4,17 @@ WORKDIR /app
 
 COPY environment.yml environment.yml
 RUN conda env create -f environment.yml --name npmine_web_app
-RUN apt-get update && apt-get install -y curl
-
-SHELL ["conda", "run", "-n", "npmine_web_app", "/bin/bash", "-c"]
-
-COPY . .
 
 FROM continuumio/miniconda3:latest AS production
 
 WORKDIR /app
 
-COPY environment.yml environment.yml
-RUN conda env create -f environment.yml --name npmine_web_app_prod
+COPY --from=builder /opt/conda/envs/npmine_web_app /opt/conda/envs/npmine_web_app
 
-SHELL ["/bin/bash", "-c", "source /opt/conda/etc/profile.d/conda.sh && conda activate npmine_web_app_prod && exec \"$@\""]
+COPY . .
 
-COPY populate_database.py populate_database.py 
+SHELL ["conda", "run", "-n", "npmine_web_app", "/bin/bash", "-c"]
 
 EXPOSE 5000
 
-CMD gunicorn --bind 0.0.0.0:5000 'websiteNPMINE:create_app()'
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "websiteNPMINE:create_app()"]
