@@ -58,7 +58,7 @@
       if (cell) {
         return gridjs.html('<a href="/compound/' + row.cells[0].data + '">' + cell + '</a>');
       } else {
-        return '-'; // Display dash if compound_name is empty
+        return '-'; 
       }
     }
   },
@@ -85,7 +85,7 @@
       formatter: (cell, row) => {
         if(cell)
           return gridjs.html('<a href="https://pubchem.ncbi.nlm.nih.gov/compound/' + cell + '">' + cell + '</a>');
-        return 'not listed';
+        return 'unknown';
       }
     },
   ];
@@ -158,9 +158,12 @@ function updateAndRender() {
     params.set('show_deleted', 'true');
   }
 
+  const newUrl = `${baseUrl}?${params.toString()}`;
+
   grid.updateConfig({
     server: {
-      url: `${baseUrl}?${params.toString()}`
+      ...grid.config.server,
+      url: newUrl            
     }
   }).forceRender();
 }
