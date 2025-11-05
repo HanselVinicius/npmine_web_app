@@ -1,0 +1,54 @@
+<div class="container">
+  <nav class="navbar navbar-expand-lg bg-body-tertiary">
+    <div class="container-fluid">
+      <div class="collapse navbar-collapse" id="navbarNavDropdown">
+        <ul class="navbar-nav">
+          <li class="nav-item">
+            {% if logged_in %}
+            <div class="nav-item dropdown">
+              <a class="nav-link dropdown-toggle" href="#" id="navbarDropdownMenuLink" role="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                Hello, {{ current_user.username }}!
+              </a>
+              <div class="dropdown-menu" aria-labelledby="navbarDropdownMenuLink">
+                <a class="dropdown-item" href="{{ url_for('main.profile', profile_id=current_user.id) }}">My Compounds</a>
+              </div>
+            </div>
+            {% endif %}
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="/">Home</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="#about">About</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="/download_compounds">Downloads</a>
+          </li>
+          <li class="nav-item"></li>
+            <a class="nav-link" href="https://github.com/computational-chemical-biology/npmine_web_app/issues">Issues and Corrections</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="https://github.com/computational-chemical-biology/npmine_web_app">Documentation</a>
+          </li>
+          {% if current_user.is_authenticated and current_user.role.name == 'admin' %}
+            <li class="nav-item me-3">
+                <a class="nav-link" href="{{ url_for('users.admin_panel') }}">Control Panel</a>
+            </li>
+             {% endif %} 
+             <li class="nav-item">
+              <a class="nav-link" href="/search_menu">Search</a>
+            </li>
+        </ul>
+      </div>
+      {% if logged_in %}
+      <ul class="navbar-nav ml-auto">
+        <li class="nav-item">
+          <a class="nav-link" id="login" href="/new_compound">
+            <button type="button" class="btn btn-outline-dark">Deposit</button>
+          </a>
+        </li>
+      </ul>
+      {% endif %}
+    </div>
+  </nav>
+</div> 

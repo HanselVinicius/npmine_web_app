@@ -13,7 +13,7 @@
                 <fieldset class="form-group">
                     <div class="form-group">
                         {{ form.username.label(class="form-control-label") }}
-    
+
                         {% if form.username.errors %}
                             {{ form.username(class="form-control form-control-lg is-invalid") }}
                             <div class="invalid-feedback">
@@ -23,6 +23,29 @@
                             </div>
                         {% else %}
                             {{ form.username(class="form-control form-control-lg") }}
+                        {% endif %}
+                    </div>
+                    <br>
+                    <div class="form-group">
+                        {{ form.name.label(class="form-control-label") }}
+                        {{ form.name(class="form-control form-control-lg" + (' is-invalid' if form.name.errors else '')) }}
+                        {% for error in form.name.errors %}
+                            <div class="invalid-feedback">{{ error }}</div>
+                        {% endfor %}
+                    </div>
+                    <br>
+                     <div class="form-group">
+                        {{ form.surname.label(class="form-control-label") }}
+    
+                        {% if form.surname.errors %}
+                            {{ form.surname(class="form-control form-control-lg is-invalid") }}
+                            <div class="invalid-feedback">
+                                {% for error in form.surname.errors %}
+                                    <span>{{ error }}</span>
+                                {% endfor %}
+                            </div>
+                        {% else %}
+                            {{ form.surname(class="form-control form-control-lg") }}
                         {% endif %}
                     </div>
                     <br>
@@ -38,6 +61,14 @@
                         {% else %}
                             {{ form.email(class="form-control form-control-lg") }}
                         {% endif %}
+                    </div>
+                    <br>
+                    <div class="form-group mt-3">
+                        {{ form.academic_position.label(class="form-control-label") }}
+                        {{ form.academic_position(class="form-control" + (' is-invalid' if form.academic_position.errors else '')) }}
+                        {% for error in form.academic_position.errors %}
+                            <div class="invalid-feedback">{{ error }}</div>
+                        {% endfor %}
                     </div>
                     <br>
                     <div class="form-group">

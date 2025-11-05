@@ -8,6 +8,9 @@ from sqlalchemy.orm.attributes import InstrumentedAttribute
 from sqlalchemy.orm import aliased
 import collections
 from websiteNPMINE import csrf
+from rdkit import Chem
+from sqlalchemy.sql import func
+from sqlalchemy import or_, desc, asc, text
 
 main = Blueprint('main', __name__)
 
@@ -16,54 +19,168 @@ main = Blueprint('main', __name__)
 def home():
     logged_in = current_user.is_authenticated  
     return render_template("index.html", logged_in=logged_in)
+
+@main.route('/api/benchmark')
+def benchmark_data():
+    """
+    Executa um benchmark de performance comparando a busca Tanimoto
+    lenta (full scan) contra a rápida (índice BFP).
+    """
+    smiles = request.args.get('smiles')
+    
+    if not smiles:
+        return jsonify({"erro": "Parâmetro 'smiles' é obrigatório. (ex: ?smiles=C[C@H]1...)"}), 400
+    
+    query_mol = Chem.MolFromSmiles(smiles)
+    if not (query_mol and query_mol.GetNumHeavyAtoms() > 1):
+        return jsonify({"erro": "SMILES inválido ou simples demais para o benchmark"}), 400
+
+    slow_sql = text("""
+        EXPLAIN (ANALYZE, FORMAT JSON)
+        SELECT COUNT(*)
+        FROM compounds
+        WHERE deleted_at IS NULL
+          AND tanimoto_sml(
+                morganbv_fp(molecule),
+                morganbv_fp(mol_from_smiles(:smiles_param))
+              ) > 0.7;
+    """)
+
+    fast_sql = text("""
+        EXPLAIN (ANALYZE, FORMAT JSON)
+        SELECT COUNT(*)
+        FROM compounds
+        WHERE deleted_at IS NULL
+          AND fingerprint % morganbv_fp(mol_from_smiles(:smiles_param));
+    """)
+
+    try:
+        slow_result = db.session.execute(slow_sql, {"smiles_param": smiles}).fetchone()
+        
+        slow_plan = slow_result[0][0]['Plan']
+        slow_time_ms = slow_plan['Actual Total Time']
+
+        db.session.execute(text("SET rdkit.tanimoto_threshold = 0.7"))
+        
+        fast_result = db.session.execute(fast_sql, {"smiles_param": smiles}).fetchone()
+        
+        fast_plan = fast_result[0][0]['Plan']
+        fast_time_ms = fast_plan['Actual Total Time']
+        
+        return jsonify({
+            "status": "Benchmark Concluído",
+            "composto_teste": smiles,
+            "metodo_lento_ms": slow_time_ms,
+            "metodo_rapido_ms": fast_time_ms,
+            "melhoria_de_performance": f"{(slow_time_ms / fast_time_ms):.2f}x mais rápido",
+            "plano_execucao_lento": slow_plan,
+            "plano_execucao_rapido": fast_plan
+        })
+
+    except Exception as e:
+        db.session.rollback() 
+        return jsonify({"erro": f"Falha no benchmark: {str(e)}"}), 500
     
 @main.route('/api/data')
 def data():
-
     start = request.args.get('start', type=int, default=0)
     length = request.args.get('length', type=int, default=10)
+    show_deleted = request.args.get('show_deleted', 'false').lower() == 'true'
+    search_term = request.args.get('search', '').strip()
+    sort_str = request.args.get('sort', '')
+    is_glycoside_filter = request.args.get('is_glycoside', 'all').lower()
 
+    query_mol = Chem.MolFromSmiles(search_term) if search_term else None
+    is_similarity_search = query_mol and query_mol.GetNumHeavyAtoms() > 1
 
-    search = request.args.get('search', '').strip()
-    search_query = or_(
-        Compounds.id.like(f'%{search}%'),
-        Compounds.compound_name.like(f'%{search}%')
-    )
+    base_query = db.session.query(Compounds)
 
-    sort = request.args.get('sort', '')
-    sort_columns = ['id', 'compound_name'] 
+    delete_filter = Compounds.deleted_at.is_not(None) if show_deleted else Compounds.deleted_at.is_(None)
+    base_query = base_query.filter(delete_filter)
+
+    if current_user.is_authenticated:
+        ownership_filter = or_(
+            Compounds.ispublic == True,
+            Compounds.user_id == current_user.id
+        )
+        base_query = base_query.filter(ownership_filter)
+    else:
+        base_query = base_query.filter(Compounds.ispublic == True)
+
+    if is_glycoside_filter == 'yes':
+        base_query = base_query.filter(Compounds.isglycoside == True)
+    elif is_glycoside_filter == 'no':
+        base_query = base_query.filter(Compounds.isglycoside == False)
+
     order = []
-    for field in sort.split(','):
-        direction = '-' if field.startswith('-') else ''
-        name = field.lstrip('-')
-        if name not in sort_columns:
-            name = 'id'
-        col = getattr(Compounds, name)
-        order.append(getattr(col, direction + 'asc')())
-    if not order:
+    similarity_col = None
+
+    if is_similarity_search:
+        
+        similarity_threshold = 0.7  
+        db.session.execute(text(f"SET rdkit.tanimoto_threshold = {similarity_threshold}"))
+        
+        query_mol_sql = func.mol_from_smiles(search_term)
+        fp_query = func.morganbv_fp(query_mol_sql) 
+
+        similarity_col = func.tanimoto_sml(Compounds.fingerprint, fp_query).label('similarity')
+
+        search_filter = Compounds.fingerprint.op('%')(fp_query)
+                
+        base_query = base_query.filter(search_filter)
+        order.append(desc('similarity'))
+
+    elif search_term:   
+        print(f"Running Text Search for: {search_term}")
+        
+        search_filter_text = f"%{search_term}%"
+        search_filter = or_(
+            Compounds.compound_name.ilike(search_filter_text),
+            Compounds.inchi_key.ilike(search_filter_text),
+            Compounds.pubchem_id.ilike(search_filter_text)
+        )
+        base_query = base_query.filter(search_filter)
+        
+        sort_columns = ['id', 'compound_name', 'inchi_key', 'pubchem_id']
+        if sort_str:
+            for field in sort_str.split(','):
+                if not field: continue
+                direction = 'desc' if field.startswith('-') else 'asc'
+                name = field.lstrip('-')
+                
+                if name in sort_columns:
+                    col = getattr(Compounds, name)
+                    order.append(getattr(col, direction)())
+
+    if not order: 
         order.append(Compounds.id.asc())
 
-    query = Compounds.query.filter_by(status='public')
-    if search:
-        query = query.filter(search_query)
-    total = query.count()
-    query = query.order_by(*order).offset(start).limit(length)
-    compounds = query.all()
+    count_query = base_query.with_entities(func.count(Compounds.id))
+    total = count_query.scalar()
 
+    data_query = None
+    if is_similarity_search:
+        data_query = base_query.with_entities(Compounds, similarity_col)
+    else:
+        data_query = base_query.with_entities(Compounds)
+    
+    data_query = data_query.order_by(*order).offset(start).limit(length)
+    results = data_query.all()
 
     data = []
-    for compound in compounds:
-        compound_data = compound.to_dict()
-        compound_data['id'] = compound.id
-        compound_data['compound_name'] = compound.compound_name
-        compound_data['compound_image'] = url_for('static', filename=compound.compound_image) if compound.compound_image else ''
+    for row in results:
+        compound = None
+        compound_data = {}
 
-        if current_user.is_authenticated:
-            edit_button = f'<a href="/compound/{compound.id}/edit">Edit</a>'
-            delete_button = f'<a href="/compound/{compound.id}/delete" onclick="return confirm(\'Are you sure you want to delete this compound?\')">Delete</a>'
-            compound_data['Edit'] = edit_button
-            compound_data['Delete'] = delete_button
+        if is_similarity_search:
+            compound = row.Compounds
+            compound_data = compound.to_dict()
+            compound_data['similarity'] = round(row.similarity, 3) 
+        else:
+            compound = row
+            compound_data = compound.to_dict()
 
+        compound_data['compound_image'] = url_for('static', filename=compound.compound_image) if compound.compound_image else None
         data.append(compound_data)
 
     return jsonify({'data': data, 'total': total})
@@ -93,7 +210,6 @@ def article(article_id):
     if not doi_record:
         abort(404)
     
-    # Filter compounds: show public compounds or private compounds that belong to the current user
     if logged_in:
         compounds = [compound for compound in doi_record.compounds 
                      if compound.status == 'public' or compound.user_id == current_user.id]
@@ -163,9 +279,9 @@ def delete_compound_and_related(compound):
                 if taxon_related_compounds == 0:
                     db.session.delete(taxon)
 
-            db.session.delete(doi)
+            DOI.soft_delete(doi)
 
-    db.session.delete(compound)
+    Compounds.soft_delete(compound)
 
 @main.route('/compound/<int:compound_id>/delete', methods=['POST'])
 @csrf.exempt
