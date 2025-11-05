@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, flash, redirect, url_for, request, current_app, g,jsonify, Response
+from flask import Blueprint, render_template, flash, redirect, url_for, request, current_app, g,jsonify, Response, abort
 from flask_login import login_required, current_user
 from websiteNPMINE.compounds.forms import CompoundForm, SearchForm, CompoundEditForm
 from websiteNPMINE.models import Compounds,DOI,Taxa, CompoundHistory
@@ -435,6 +435,15 @@ def update_compound_relationships(compound, doi_data_list):
 def edit_compound(id):
     logged_in = current_user.is_authenticated
     compound = Compounds.query.get_or_404(id)
+
+    is_admin = current_user.role_id == 1
+    is_editor = current_user.role_id == 2
+    is_owner = compound.user_id == current_user.id
+
+    if not (is_admin or is_editor or is_owner):
+        flash('You do not have permission to edit this compound.', 'danger')
+        return redirect(url_for('main.index'))
+
     form = CompoundEditForm(obj=compound)
 
     history_records = CompoundHistory.query.filter_by(compound_id=id).order_by(CompoundHistory.created_at.desc()).all()
@@ -547,6 +556,7 @@ def revert_compound(history_id):
         journal=main_compound.journal,
         article_url=main_compound.article_url,
         inchi_key=main_compound.inchi_key,
+        exact_molecular_weight=main_compound.exact_molecular_weight
     )
     db.session.add(current_state_history)
 
