@@ -10,21 +10,28 @@
           <div class="content-section">
             <form method="POST" action="">
                 {{ form.hidden_tag() }}
-                {{ form.csrf_token }}
                 <fieldset class="form-group">
                     <div class="form-group">
-                        {{ form.name.label(class="form-control-label") }}
-    
-                        {% if form.name.errors %}
-                            {{ form.name(class="form-control form-control-lg is-invalid") }}
+                        {{ form.username.label(class="form-control-label") }}
+
+                        {% if form.username.errors %}
+                            {{ form.username(class="form-control form-control-lg is-invalid") }}
                             <div class="invalid-feedback">
-                                {% for error in form.name.errors %}
+                                {% for error in form.username.errors %}
                                     <span>{{ error }}</span>
                                 {% endfor %}
                             </div>
                         {% else %}
-                            {{ form.name(class="form-control form-control-lg") }}
+                            {{ form.username(class="form-control form-control-lg") }}
                         {% endif %}
+                    </div>
+                    <br>
+                    <div class="form-group">
+                        {{ form.name.label(class="form-control-label") }}
+                        {{ form.name(class="form-control form-control-lg" + (' is-invalid' if form.name.errors else '')) }}
+                        {% for error in form.name.errors %}
+                            <div class="invalid-feedback">{{ error }}</div>
+                        {% endfor %}
                     </div>
                     <br>
                      <div class="form-group">
@@ -56,20 +63,12 @@
                         {% endif %}
                     </div>
                     <br>
-                    <div class="form-group">
-                        <label for="origin_type_1">{{ form.academic_position.label}}</label>
-                        <select class="form-control" id="origin_type_1" name="academic_position">
-                            {% for value, label in form.academic_position.choices %}
-                                <option value="{{ value }}">{{ label }}</option>
-                            {% endfor %}
-                        </select>
-                        {% if form.academic_position.errors %}
-                            <ul class="errors">
-                                {% for error in form.academic_position.errors %}
-                                    <li>{{ error }}</li>
-                                {% endfor %}
-                            </ul>
-                        {% endif %}
+                    <div class="form-group mt-3">
+                        {{ form.academic_position.label(class="form-control-label") }}
+                        {{ form.academic_position(class="form-control" + (' is-invalid' if form.academic_position.errors else '')) }}
+                        {% for error in form.academic_position.errors %}
+                            <div class="invalid-feedback">{{ error }}</div>
+                        {% endfor %}
                     </div>
                     <br>
                     <div class="form-group">

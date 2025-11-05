@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, request, flash, redirect, url_for
+from flask import Blueprint, render_template, request, flash, redirect, url_for, current_app
 from websiteNPMINE.models import Accounts, Role
 from werkzeug.security import generate_password_hash, check_password_hash
 from websiteNPMINE import db, bcrypt, mail
@@ -6,6 +6,7 @@ from flask_login import login_user, login_required, logout_user, current_user
 from .forms import RegistrationForm, LoginForm, ResetPasswordForm, RequestResetForm
 from flask_mail import Message
 from websiteNPMINE import csrf
+from sqlalchemy.exc import IntegrityError
 
 users = Blueprint('users', __name__)
 
@@ -33,27 +34,64 @@ def logout():
     return redirect(url_for('main.home'))
 
 
-@users.route('/sign-up', methods=['GET', 'POST'])
+@users.route('/sign_up', methods=['GET', 'POST'])
 def sign_up():
     if current_user.is_authenticated:
         return redirect(url_for('main.home'))
+
     form = RegistrationForm()
+
+    # Log incoming method and whether csrf token exists
+    current_app.logger.debug("Sign-up called, method=%s, form_csrf=%s", request.method, form.csrf_token.data)
+
     if form.validate_on_submit():
+        # successful validation path (keep your original logic)
         hashed_password = bcrypt.generate_password_hash(form.password.data).decode('utf-8')
-        default_role_id = 3  
+        default_role_id = 3
+
+        base_username = (form.name.data + form.surname.data).lower().replace(" ", "")
+        username = base_username
+        counter = 1
+
+        while Accounts.query.filter_by(username=username).first():
+            username = f"{base_username}{counter}"
+            counter += 1
+
         user = Accounts(
-            username=form.username.data,
+            username=username,
             name=form.name.data,
             surname=form.surname.data,
-            academic_position=form.academic_position.data,
+            academic_level=form.academic_position.data,
             email=form.email.data,
             password=hashed_password,
-            role_id=default_role_id  
+            role_id=default_role_id
         )
+
         db.session.add(user)
-        db.session.commit()
-        flash('Your account has been created! You are now able to log in', 'success')
-        return redirect(url_for('users.login'))
+        try:
+            db.session.commit()
+            flash('Your account has been created! You are now able to log in', 'success')
+            return redirect(url_for('users.login'))
+        except IntegrityError as ie:
+            db.session.rollback()
+            current_app.logger.exception("IntegrityError during sign-up")
+            flash('That email or username is already in use. Please choose another.', 'danger')
+        except Exception:
+            db.session.rollback()
+            current_app.logger.exception("Unexpected error during sign-up")
+            flash('An unexpected error occurred. Please try again later.', 'danger')
+
+    else:
+        # Validation failed OR it was a GET. Provide actionable debugging output for POSTs
+        if request.method == 'POST':
+            # Log the full errors to the flask logger
+            current_app.logger.debug("Form validation failed. errors=%s", form.errors)
+            # Flash each field error for the user (optional, good for dev)
+            for field, errors in form.errors.items():
+                for err in errors:
+                    # You may want to suppress flashing CSRF in production
+                    flash(f"Error in {field}: {err}", 'danger')
+
     return render_template('signup.html', title='Register', form=form, user=current_user)
 
 @users.route('/admin_panel', methods=['GET', 'POST'])

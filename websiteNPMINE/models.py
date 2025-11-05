@@ -6,6 +6,7 @@ from datetime import datetime
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.types import UserDefinedType
 
+
 admin_role_id = 1
 editor_role_id = 2
 user_role_id = 3
@@ -32,7 +33,7 @@ class Role(db.Model):
     def __repr__(self):
         return f'<Role: {self.name}>'
 
-class Accounts(db.Model):
+class Accounts(db.Model, UserMixin):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(20), unique=True, nullable=False)
     name = db.Column(db.String(256), nullable=False)
