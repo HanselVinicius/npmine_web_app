@@ -32,7 +32,7 @@ def cpd2prop(inchikey):
 
     return d
 
-def save_compound_image(compound_id, smiles):
+def save_compound_image(compound_id, smiles=None, inchi=None):
     filename = f"{compound_id}.png"
     relative_path = os.path.join('compound_images', filename)
     
@@ -42,7 +42,10 @@ def save_compound_image(compound_id, smiles):
 
     os.makedirs(os.path.dirname(full_path), exist_ok=True)
 
-    mol = Chem.MolFromSmiles(smiles)
+    mol = Chem.MolFromSmiles(smiles) if smiles else Chem.MolFromInchi(inchi)
+    if mol is None:
+        raise ValueError("Unable to generate compound image from the provided structure")
+
     img = Draw.MolToImage(mol, size=(200, 200))
     img.save(full_path)
 
