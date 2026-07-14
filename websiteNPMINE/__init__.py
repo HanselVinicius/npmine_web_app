@@ -77,13 +77,14 @@ def create_app(config_class=None):
     from websiteNPMINE.users.routes import users
     from websiteNPMINE.main.routes import main
     from websiteNPMINE.compounds.routes import compounds
+    from websiteNPMINE.groups.routes import groups
     from websiteNPMINE.populate_compounds_cli import register_commands
     app.register_blueprint(users)
     app.register_blueprint(main)
     app.register_blueprint(compounds)
+    app.register_blueprint(groups)
     register_commands(app)
 
     migrate.init_app(app, db)
     
     return app
-
