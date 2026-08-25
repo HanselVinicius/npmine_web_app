@@ -6,7 +6,7 @@
 {% include 'components/navbar.html' %}
 {% include 'components/main-banner.html' %}
 
-{% if current_user.is_authenticated and (current_user.role_id == 1 or compound.user_id == current_user.id) %}
+{% if can_edit_compound %}
 <div class="container w-50 p-3 d-flex justify-content-end">
   <a class="btn btn-primary" href="{{ url_for('compounds.edit_compound', id=compound.id) }}">
     Edit Compound
@@ -70,6 +70,45 @@
               </td>
           </tr>
       </tbody>
+  </table>
+  <h2>Groups</h2>
+  <table class="table table-bordered">
+    <tbody>
+      <tr>
+        <th scope="row">Shared With</th>
+        <td>
+          {% if linked_groups %}
+          <ul class="mb-0">
+            {% for group in linked_groups %}
+            <li>{{ group.name }}</li>
+            {% endfor %}
+          </ul>
+          {% else %}
+          No groups
+          {% endif %}
+        </td>
+      </tr>
+      {% if can_manage_compound_groups %}
+      <tr>
+        <th scope="row">Add to Group</th>
+        <td>
+          {% if available_groups %}
+          <form method="POST" action="{{ url_for('groups.add_compound', compound_id=compound.id) }}" class="row g-2">
+            {{ compound_group_form.hidden_tag() }}
+            <div class="col-md-8">
+              {{ compound_group_form.group_id(class="form-select") }}
+            </div>
+            <div class="col-md-4">
+              {{ compound_group_form.submit(class="btn btn-outline-primary w-100") }}
+            </div>
+          </form>
+          {% else %}
+          No available groups
+          {% endif %}
+        </td>
+      </tr>
+      {% endif %}
+    </tbody>
   </table>
   <h2>Additional Information - NP Classifier</h2>
 <table class="table table-bordered">

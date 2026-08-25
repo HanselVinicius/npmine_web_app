@@ -47,6 +47,19 @@ class Accounts(db.Model, UserMixin):
 
     role_id = db.Column(db.Integer, db.ForeignKey('role.id'), nullable=False, default=user_role_id)  
     role = db.relationship('Role', backref=db.backref('accounts', lazy='dynamic'))
+    owned_groups = db.relationship('Group', back_populates='owner', lazy='dynamic')
+    group_memberships = db.relationship(
+        'AccountGroup',
+        back_populates='account',
+        cascade='all, delete-orphan'
+    )
+    member_groups = db.relationship(
+        'Group',
+        secondary='accounts_groups',
+        back_populates='members',
+        overlaps='account,group,group_memberships,memberships',
+        lazy='dynamic'
+    )
     
     def get_reset_token(self, expires_sec=1800):
         s = Serializer(current_app.config['SECRET_KEY'])
@@ -69,6 +82,55 @@ class Accounts(db.Model, UserMixin):
 
     def restore(self):
         self.deleted_at = None
+
+class AccountGroup(db.Model):
+    __tablename__ = 'accounts_groups'
+
+    group_id = db.Column(db.Integer, db.ForeignKey('groups.id', ondelete="CASCADE"), primary_key=True)
+    account_id = db.Column(db.Integer, db.ForeignKey('accounts.id', ondelete="CASCADE"), primary_key=True)
+    role = db.Column(db.String(20), nullable=False, default='member')
+
+    group = db.relationship('Group', back_populates='memberships', overlaps='member_groups,members')
+    account = db.relationship('Accounts', back_populates='group_memberships', overlaps='member_groups,members')
+
+compound_group = db.Table(
+    'compound_group',
+    db.Column('group_id', db.Integer, db.ForeignKey('groups.id', ondelete="CASCADE"), primary_key=True),
+    db.Column('compound_id', db.Integer, db.ForeignKey('compounds.id', ondelete="CASCADE"), primary_key=True)
+)
+
+class Group(db.Model):
+    __tablename__ = 'groups'
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(120), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('accounts.id'), nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    owner = db.relationship('Accounts', back_populates='owned_groups')
+    memberships = db.relationship(
+        'AccountGroup',
+        back_populates='group',
+        cascade='all, delete-orphan',
+        overlaps='member_groups,members'
+    )
+    members = db.relationship(
+        'Accounts',
+        secondary='accounts_groups',
+        back_populates='member_groups',
+        overlaps='account,group,group_memberships,memberships',
+        lazy='dynamic'
+    )
+    compounds = db.relationship(
+        'Compounds',
+        secondary=compound_group,
+        back_populates='groups',
+        lazy='dynamic'
+    )
+
+    def __repr__(self):
+        return f"<Group: {self.name}>"
 
 # Association tables with delete cascade
 doicomp = db.Table(
@@ -136,6 +198,12 @@ class Compounds(db.Model):
     dois = db.relationship('DOI', 
                            secondary=doicomp, 
                            back_populates='compounds')
+    groups = db.relationship(
+        'Group',
+        secondary=compound_group,
+        back_populates='compounds',
+        lazy='dynamic'
+    )
 
     def __repr__(self):
         return f'Compounds: {self.id}'

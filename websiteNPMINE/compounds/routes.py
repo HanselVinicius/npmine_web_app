@@ -3,7 +3,7 @@ from flask import Blueprint, render_template, flash, redirect, url_for, request,
 from flask_login import login_required, current_user
 from websiteNPMINE.compounds.compound_service import CompoundService
 from websiteNPMINE.compounds.forms import CompoundForm, SearchForm, CompoundEditForm
-from websiteNPMINE.models import Compounds,DOI,Taxa, CompoundHistory
+from websiteNPMINE.models import AccountGroup, Compounds, DOI, Group, Taxa, CompoundHistory
 from websiteNPMINE import db
 import os
 import json
@@ -23,6 +23,19 @@ from io import StringIO
 import csv
 
 compounds = Blueprint('compounds', __name__)
+
+
+def can_edit_compound(compound):
+    if current_user.role_id == 1 or compound.user_id == current_user.id:
+        return True
+
+    return AccountGroup.query.filter(
+        AccountGroup.account_id == current_user.id,
+        AccountGroup.role == 'editor',
+        AccountGroup.group_id.in_(
+            compound.groups.with_entities(Group.id)
+        )
+    ).first() is not None
 
 def save_compound_image(compound_id, smiles):
     filename = f"{compound_id}.png"
@@ -535,13 +548,9 @@ def edit_compound(id):
     logged_in = current_user.is_authenticated
     compound = Compounds.query.get_or_404(id)
 
-    is_admin = current_user.role_id == 1
-    is_editor = current_user.role_id == 2
-    is_owner = compound.user_id == current_user.id
-
-    if not (is_admin or is_editor or is_owner):
+    if not can_edit_compound(compound):
         flash('You do not have permission to edit this compound.', 'danger')
-        return redirect(url_for('main.index'))
+        return redirect(url_for('main.compound', compound_id=compound.id))
 
     form = CompoundEditForm(obj=compound)
 

@@ -11,6 +11,7 @@
               </a>
               <div class="dropdown-menu" aria-labelledby="navbarDropdownMenuLink">
                 <a class="dropdown-item" href="{{ url_for('main.profile', profile_id=current_user.id) }}">My Compounds</a>
+                <a class="dropdown-item" href="{{ url_for('groups.index') }}">Groups</a>
               </div>
             </div>
             {% endif %}
