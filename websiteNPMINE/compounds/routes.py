@@ -105,7 +105,7 @@ def registerCompound():
                     db=db,
                     compound_name=compound_name_input,
                 )
-                
+
                 if method_used:
                     flash(method_used, 'success')
 
@@ -335,11 +335,11 @@ def search_menu():
 def search():
     logged_in = current_user.is_authenticated
     current_user_id = current_user.id if logged_in else None
-    
+
     q = request.args.get("q")
     print(f"Search query: {q}")
     current_app.logger.info(f"current_user: {current_user}")
-    
+
     if q:
         results = Compounds.query \
             .outerjoin(Compounds.dois) \
