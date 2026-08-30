@@ -3,7 +3,7 @@ COMPOSE := docker compose --env-file $(ENV_FILE) -f docker-compose.yml
 FLASK := $(COMPOSE) exec web conda run -n npmine_web_app flask
 SHELL := /bin/bash
 
-.PHONY: help up down restart logs ps shell migrate ensure-web import-compounds import-compounds-enriched import-taxa
+.PHONY: help up down restart logs ps shell migrate ensure-web import-compounds import-compounds-enriched generate-compound-images import-taxa
 
 help:
 	@echo "Available targets:"
@@ -16,6 +16,7 @@ help:
 	@echo "  make migrate                    Run database migrations"
 	@echo "  make import-compounds           Import compounds without external enrichment"
 	@echo "  make import-compounds-enriched  Import compounds with PubChem and NPClassifier"
+	@echo "  make generate-compound-images   Regenerate images for all existing compounds"
 	@echo "  make import-taxa                Import taxa"
 
 up:
@@ -46,6 +47,9 @@ import-compounds: ensure-web
 
 import-compounds-enriched: ensure-web
 	$(FLASK) import-compounds --with-pubchem --with-npclassifier
+
+generate-compound-images: ensure-web
+	$(FLASK) generate-compound-images
 
 import-taxa: ensure-web
 	$(FLASK) import-taxa

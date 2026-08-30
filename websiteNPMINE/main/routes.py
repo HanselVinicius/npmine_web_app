@@ -1,7 +1,8 @@
 from flask import Blueprint, render_template, request, jsonify, abort, redirect, url_for,flash
 from flask_login import login_required, current_user, login_user, logout_user
-from websiteNPMINE.models import Compounds, DOI, Accounts, Taxa, doicomp, doitaxa
+from websiteNPMINE.models import AccountGroup, Compounds, DOI, Accounts, Group, Taxa, doicomp, doitaxa
 from websiteNPMINE import db
+from websiteNPMINE.groups.forms import CompoundGroupForm
 import requests
 from sqlalchemy import or_
 from sqlalchemy.orm.attributes import InstrumentedAttribute
@@ -13,6 +14,37 @@ from sqlalchemy.sql import func
 from sqlalchemy import or_, desc, asc, text
 
 main = Blueprint('main', __name__)
+
+
+def can_view_compound(compound):
+    if compound.status == 'public':
+        return True
+
+    if not current_user.is_authenticated:
+        return False
+
+    if current_user.role_id == 1 or current_user.id == compound.user_id:
+        return True
+
+    return compound.groups.filter(
+        Group.members.any(Accounts.id == current_user.id)
+    ).first() is not None
+
+
+def can_edit_compound(compound):
+    if not current_user.is_authenticated:
+        return False
+
+    if current_user.role_id == 1 or current_user.id == compound.user_id:
+        return True
+
+    return AccountGroup.query.filter(
+        AccountGroup.account_id == current_user.id,
+        AccountGroup.role == 'editor',
+        AccountGroup.group_id.in_(
+            compound.groups.with_entities(Group.id)
+        )
+    ).first() is not None
 
 @main.route('/')
 @main.route("/home")
@@ -101,7 +133,8 @@ def data():
     if current_user.is_authenticated:
         ownership_filter = or_(
             Compounds.status == 'public',
-            Compounds.user_id == current_user.id
+            Compounds.user_id == current_user.id,
+            Compounds.groups.any(Group.members.any(Accounts.id == current_user.id))
         )
         base_query = base_query.filter(ownership_filter)
     else:
@@ -192,14 +225,52 @@ def compound(compound_id):
     logged_in = current_user.is_authenticated  
     if not compound:
         abort(404)
+    if not can_view_compound(compound):
+        abort(404)
 
     articles = [(doi.id, doi.doi) for doi in compound.dois]
+    linked_groups = compound.groups.order_by(Group.name.asc()).all()
+    visible_linked_groups = []
+    compound_group_form = CompoundGroupForm()
+    available_groups = []
+    can_edit = can_edit_compound(compound)
+    can_manage_groups = logged_in and (current_user.role_id == 1 or compound.user_id == current_user.id)
+
+    if can_manage_groups:
+        visible_linked_groups = linked_groups
+        linked_group_ids = {group.id for group in linked_groups}
+        user_groups = (
+            Group.query
+            .filter(or_(Group.user_id == current_user.id, Group.members.any(Accounts.id == current_user.id)))
+            .order_by(Group.name.asc())
+            .all()
+        )
+        available_groups = [group for group in user_groups if group.id not in linked_group_ids]
+    elif logged_in:
+        visible_linked_groups = [
+            group for group in linked_groups
+            if group.members.filter(Accounts.id == current_user.id).first()
+        ]
+
+    compound_group_form.group_id.choices = [
+        (group.id, group.name) for group in available_groups
+    ]
 
     # Use NPclassifier API
     #api_url = f'https://npclassifier.gnps2.org/classify?smiles={compound.smiles}'
     #resposta_api = requests.get(api_url).json()
 
-    return render_template('compound.html', logged_in=logged_in, compound=compound, articles=articles)
+    return render_template(
+        'compound.html',
+        logged_in=logged_in,
+        compound=compound,
+        articles=articles,
+        linked_groups=visible_linked_groups,
+        compound_group_form=compound_group_form,
+        available_groups=available_groups,
+        can_edit_compound=can_edit,
+        can_manage_compound_groups=can_manage_groups
+    )
 
 
 @main.route('/article/<int:article_id>')
@@ -323,7 +394,3 @@ def toggle_privacy(compound_id):
 
 
     return redirect(url_for('main.profile', profile_id=current_user.id))
-
-
-
-

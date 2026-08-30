@@ -20,6 +20,7 @@ DEFAULT_TAXA_FILE = 'dados_teste/df_taxons_final.xlsx'
 
 def register_commands(app):
     app.cli.add_command(import_compounds_command)
+    app.cli.add_command(generate_compound_images_command)
     app.cli.add_command(import_taxa_command)
 
 
@@ -143,7 +144,7 @@ def import_compounds_command(file_path, limit, commit_every, skip_existing, with
 
     workbook = load_workbook(resolved_path, read_only=True, data_only=True)
     sheet = workbook.active
-    stats = {'created': 0, 'updated': 0, 'linked': 0, 'skipped': 0, 'failed': 0}
+    stats = {'created': 0, 'updated': 0, 'linked': 0, 'skipped': 0, 'failed': 0, 'image_failed': 0}
 
     click.echo(f"Importing compounds from {resolved_path}")
 
@@ -201,9 +202,17 @@ def import_compounds_command(file_path, limit, commit_every, skip_existing, with
                 compound.dois.append(doi)
                 stats['linked'] += 1
 
-            if with_images and compound.smiles and not compound.compound_image:
-                compound.compound_image = save_compound_image(compound.id, compound.smiles)
-                stats['updated'] += 1
+            if with_images and not compound.compound_image and (compound.smiles or compound.inchi):
+                try:
+                    compound.compound_image = save_compound_image(
+                        compound.id,
+                        smiles=compound.smiles,
+                        inchi=compound.inchi,
+                    )
+                    stats['updated'] += 1
+                except Exception as exc:
+                    stats['image_failed'] += 1
+                    current_app.logger.warning("Image generation failed for compound %s: %s", compound.id, exc)
 
             if row_number % commit_every == 0:
                 db.session.commit()
@@ -221,7 +230,47 @@ def import_compounds_command(file_path, limit, commit_every, skip_existing, with
     click.echo(
         "Compound import complete: "
         f"created={stats['created']} updated={stats['updated']} linked={stats['linked']} "
-        f"skipped={stats['skipped']} failed={stats['failed']}"
+        f"skipped={stats['skipped']} failed={stats['failed']} image_failed={stats['image_failed']}"
+    )
+
+
+@click.command('generate-compound-images')
+@click.option('--missing-only', is_flag=True, help='Only generate images for compounds without an image path.')
+@click.option('--commit-every', type=int, default=100, show_default=True, help='Commit every N generated images.')
+def generate_compound_images_command(missing_only, commit_every):
+    """Generate local RDKit images for existing compounds."""
+    if commit_every < 1:
+        raise click.ClickException("--commit-every must be greater than zero.")
+
+    stats = {'generated': 0, 'skipped': 0, 'failed': 0}
+    query = Compounds.query.order_by(Compounds.id)
+
+    if missing_only:
+        query = query.filter(Compounds.compound_image.is_(None))
+
+    for compound in query.yield_per(commit_every):
+        if not compound.smiles and not compound.inchi:
+            stats['skipped'] += 1
+            continue
+
+        try:
+            compound.compound_image = save_compound_image(
+                compound.id,
+                smiles=compound.smiles,
+                inchi=compound.inchi,
+            )
+            stats['generated'] += 1
+            if stats['generated'] % commit_every == 0:
+                db.session.commit()
+                click.echo(f"Generated {stats['generated']} compound images")
+        except Exception as exc:
+            stats['failed'] += 1
+            current_app.logger.warning("Image generation failed for compound %s: %s", compound.id, exc)
+
+    db.session.commit()
+    click.echo(
+        "Compound image generation complete: "
+        f"generated={stats['generated']} skipped={stats['skipped']} failed={stats['failed']}"
     )
 
 
